@@ -35,6 +35,83 @@ def main():
     plot_validation_training_distribution(y_train, y_valid)
     show_original_and_preprocessed_sample_image(image_paths)
 
+def random_augment(image_to_augment, steering_angle):
+    augment_image = mpimg.imread(image_to_augment)
+    augment_image = augment_image.astype("uint8")
+
+    if np.random.rand() < 0.5:
+        augment_image = zoom(augment_image)
+
+    if np.random.rand() < 0.5:
+        augment_image = pan(augment_image)
+
+    if np.random.rand() < 0.5:
+        augment_image = img_random_brightness(augment_image)
+
+    if np.random.rand() < 0.5:
+        augment_image = img_random_shadow(augment_image)
+
+    if np.random.rand() < 0.5:
+        augment_image, steering_angle = img_random_flip(augment_image, steering_angle)
+
+    return augment_image, steering_angle
+
+def img_preprocess_no_imread(img):
+    img = img[60:135, :, :]
+    # The NVIDIA paper recommends YUV rather than RGB
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
+    img = cv2.GaussianBlur(img, (3, 3), 0)
+    img = cv2.resize(img, (200, 66))
+    img = img / 255
+    return img
+
+def zoom(image_to_zoom):
+    transform = A.RandomScale(scale_limit=0.5, p=1.0)  # 0.0–0.3 range just like 1.0–1.3
+    z_image = transform(image=image_to_zoom)
+    return z_image["image"]
+
+
+def pan(image_to_pan):
+    pan_func = A.Affine(translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)})
+    pan_image = pan_func(image=image_to_pan)
+
+    return pan_image["image"]
+
+
+def img_random_brightness(image_to_brighten):
+    bright_func = A.RandomBrightnessContrast(
+        brightness_limit=0.4, contrast_limit=0.0, p=1.0
+    )
+    bright_image = bright_func(image=image_to_brighten)
+
+    return bright_image["image"]
+
+
+def img_random_flip(image_to_flip, steering_angle):
+    # 0 - flip horizontally
+    # 1 - flip vertical
+    # -1 - combo of both
+    flipped_image = cv2.flip(image_to_flip, 1)
+    steering_angle = -steering_angle
+
+    return flipped_image, steering_angle
+
+
+def img_random_shadow(image):
+    h, w, _ = image.shape
+    x1, y1 = np.random.randint(0, w), 0
+    x2, y2 = np.random.randint(0, w), h
+    shadow_mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.fillPoly(shadow_mask, np.array([[(x1, y1), (x2, y2), (w, h), (0, h)]]), 255)
+    hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
+    shadow_strength = np.random.uniform(0.5, 0.85)
+
+    hls[:, :, 1][shadow_mask == 255] = (
+        hls[:, :, 1][shadow_mask == 255] * shadow_strength
+    )
+    shadowed_image = cv2.cvtColor(hls, cv2.COLOR_HLS2RGB)
+    return shadowed_image
+
 def show_original_and_preprocessed_sample_image(image_paths):
     image = image_paths[100]
     original_image = mpimg.imread(image)
