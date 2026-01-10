@@ -1,0 +1,11 @@
+# Image files
+DataForCar/IMG/
+
+# Python cache
+__pycache__/
+*.pyc
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
