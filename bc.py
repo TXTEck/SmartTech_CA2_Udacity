@@ -33,39 +33,31 @@ def main():
     plot_balanced_data(balanced_data, centre)
     X_train, X_valid, y_train, y_valid, image_paths = split_data(balanced_data)
     plot_validation_training_distribution(y_train, y_valid)
+    show_original_and_preprocessed_sample_image(image_paths)
 
-def bin_and_plot_data(data):
-    hist, bins = np.histogram(data["steering"], num_bins)
-    print(bins)
-    centre = (bins[:-1] + bins[1:]) * 0.5
-    plt.bar(centre, hist, width=0.05)
+def show_original_and_preprocessed_sample_image(image_paths):
+    image = image_paths[100]
+    original_image = mpimg.imread(image)
+    preprocessed_image = img_preprocess(image)
+    fig, axes = plt.subplots(1, 2, figsize=(15, 10))
+    fig.tight_layout()
+    axes[0].imshow(original_image)
+    axes[0].set_title("Original Image")
+    axes[1].imshow(preprocessed_image)
+    axes[1].set_title("Preprocessed Image")
     plt.show()
-    return bins, centre
 
-# Too many zeros, this would bias the model to pretty much always drive straight.
-def balance_data(data, bins):
-    remove_list = []
-    for i in range(num_bins):
-        list_ = []
-        for j in range(len(data["steering"])):
-            if bins[i] <= data["steering"][j] <= bins[i + 1]:
-                list_.append(j)
-        list_ = shuffle(list_)
-        list_ = list_[samples_per_bin:]
-        remove_list.extend(list_)
-    print("Remove: ", len(remove_list))
-    data.drop(data.index[remove_list], inplace=True)
-    print("Remaining: ", len(data))
-    return data
 
-def plot_balanced_data(balanced_data, centre):
-    hist, _ = np.histogram(balanced_data["steering"], num_bins)
-    plt.bar(centre, hist, width=0.05)
-    plt.plot(
-        (np.min(balanced_data["steering"]), np.max(balanced_data["steering"])),
-        (samples_per_bin, samples_per_bin),
-    )
-    plt.show()
+def img_preprocess(img):
+    img = mpimg.imread(img)
+    img = img[60:135, :, :]
+    # The NVIDIA paper recommends YUV rather than RGB
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
+    img = cv2.GaussianBlur(img, (3, 3), 0)
+    img = cv2.resize(img, (200, 66))
+    img = img / 255
+    return img
+
 
 def plot_validation_training_distribution(y_train, y_valid):
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
@@ -94,6 +86,39 @@ def load_steering_img(datadir, data):
     image_paths = np.asarray(image_path)
     steerings = np.array(steerings)
     return image_paths, steerings
+
+def plot_balanced_data(balanced_data, centre):
+    hist, _ = np.histogram(balanced_data["steering"], num_bins)
+    plt.bar(centre, hist, width=0.05)
+    plt.plot(
+        (np.min(balanced_data["steering"]), np.max(balanced_data["steering"])),
+        (samples_per_bin, samples_per_bin),
+    )
+    plt.show()
+
+# Too many zeros, this would bias the model to pretty much always drive straight.
+def balance_data(data, bins):
+    remove_list = []
+    for i in range(num_bins):
+        list_ = []
+        for j in range(len(data["steering"])):
+            if bins[i] <= data["steering"][j] <= bins[i + 1]:
+                list_.append(j)
+        list_ = shuffle(list_)
+        list_ = list_[samples_per_bin:]
+        remove_list.extend(list_)
+    print("Remove: ", len(remove_list))
+    data.drop(data.index[remove_list], inplace=True)
+    print("Remaining: ", len(data))
+    return data
+
+def bin_and_plot_data(data):
+    hist, bins = np.histogram(data["steering"], num_bins)
+    print(bins)
+    centre = (bins[:-1] + bins[1:]) * 0.5
+    plt.bar(centre, hist, width=0.05)
+    plt.show()
+    return bins, centre
 
 def load_data():
     columns = ["center", "left", "right", "steering", "throttle", "reverse", "speed"]
