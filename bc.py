@@ -34,6 +34,37 @@ def main():
     X_train, X_valid, y_train, y_valid, image_paths = split_data(balanced_data)
     plot_validation_training_distribution(y_train, y_valid)
     show_original_and_preprocessed_sample_image(image_paths)
+    apply_preprocessing(X_train, X_valid)
+
+def nvidia_model():
+    model = Sequential()
+    model.add(
+        Conv2D(24, (5, 5), strides=(2, 2), input_shape=(66, 200, 3), activation="elu")
+    )
+    model.add(Conv2D(36, (5, 5), strides=(2, 2), activation="elu"))
+    model.add(Conv2D(48, (5, 5), strides=(2, 2), activation="elu"))
+    model.add(Conv2D(64, (3, 3), activation="elu"))
+    model.add(Conv2D(64, (3, 3), activation="elu"))
+
+    model.add(Flatten())
+
+    model.add(Dense(100, activation="elu"))
+    model.add(Dropout(0.3))
+
+    model.add(Dense(50, activation="elu"))
+    model.add(Dropout(0.3))
+
+    model.add(Dense(10, activation="elu"))
+    model.add(Dense(1))
+
+    optimizer = Adam(learning_rate=0.0001)
+    model.compile(loss="mse", optimizer=optimizer)
+    return model
+
+def apply_preprocessing(X_train, X_valid):
+    X_train = np.array(list(map(img_preprocess, X_train)))
+    X_valid = np.array(list(map(img_preprocess, X_valid)))
+    return X_train, X_valid
 
 def random_augment(image_to_augment, steering_angle):
     augment_image = mpimg.imread(image_to_augment)
