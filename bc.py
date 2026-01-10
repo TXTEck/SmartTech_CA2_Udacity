@@ -9,6 +9,7 @@ from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.layers import Dropout, Flatten
 from tensorflow.keras.layers import Conv2D, MaxPooling2D
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.callbacks import EarlyStopping
 import pandas as pd
 import cv2
 import requests
@@ -35,6 +36,60 @@ def main():
     plot_validation_training_distribution(y_train, y_valid)
     show_original_and_preprocessed_sample_image(image_paths)
     apply_preprocessing(X_train, X_valid)
+
+    model = nvidia_model()
+    train_and_test_model(model, X_train, y_train, X_valid, y_valid)
+
+def train_and_test_model(model, X_train, y_train, X_valid, y_valid):
+    print(model.summary())
+
+    history = model.fit(
+        batch_generator(X_train, y_train, 100, True),
+        steps_per_epoch=15,
+        epochs=20,
+        validation_data=batch_generator(X_valid, y_valid, 100, False),
+        validation_steps=4,
+        callbacks=[
+            EarlyStopping(
+                monitor="val_loss", 
+                patience=3, 
+                restore_best_weights=True, 
+                verbose=1
+            )
+        ],
+        verbose=1,
+    )
+
+    model.save("nvidia_model_elu_dropout.h5")
+
+    plt.plot(history.history["loss"])
+    plt.plot(history.history["val_loss"])
+    plt.legend(["training", "validation"])
+    plt.title("Loss")
+    plt.xlabel("Epoch")
+    plt.show()
+
+def batch_generator(image_paths, steering_angles, batch_size, is_training):
+    while True:
+        batch_img = []
+        batch_steering = []
+
+        for i in range(batch_size):
+            random_index = random.randint(0, len(image_paths) - 1)
+
+            if is_training:
+                im, steering = random_augment(
+                    image_paths[random_index], steering_angles[random_index]
+                )
+            else:
+                im = mpimg.imread(image_paths[random_index])
+                steering = steering_angles[random_index]
+
+            im = img_preprocess_no_imread(im)
+            batch_img.append(im)
+            batch_steering.append(steering)
+
+        yield (np.asarray(batch_img), np.asarray(batch_steering))
 
 def nvidia_model():
     model = Sequential()
