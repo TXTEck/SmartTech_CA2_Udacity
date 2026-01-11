@@ -5,10 +5,8 @@ import tensorflow.keras
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.layers import Dropout, Flatten
-from tensorflow.keras.layers import Conv2D, MaxPooling2D
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.callbacks import EarlyStopping
 import pandas as pd
 import cv2
@@ -23,7 +21,7 @@ import albumentations as A
 
 
 num_bins = 25
-samples_per_bin = 200
+samples_per_bin = 300
 datadir = "C:\\Users\\USER\\Desktop\\SmartTechCA2_XuTeckTan\\DataForCar\\"
 
 def main():
@@ -31,11 +29,20 @@ def main():
     print(f"Total driving samples: {len(data)}")
     bins, centre = bin_and_plot_data(data)
     balanced_data = balance_data(data, bins)
+    mild_turns = (balanced_data["steering"].abs() > 0.05).sum()
+    medium_turns = (balanced_data["steering"].abs() > 0.15).sum()
+    sharp_turns = (balanced_data["steering"].abs() > 0.30).sum()
+
+    print("After balancing:")
+    print(f"  Mild turns   (|steer| > 0.05): {mild_turns}")
+    print(f"  Medium turns (|steer| > 0.15): {medium_turns}")
+    print(f"  Sharp turns  (|steer| > 0.30): {sharp_turns}")
+
     plot_balanced_data(balanced_data, centre)
     X_train, X_valid, y_train, y_valid, image_paths = split_data(balanced_data)
     plot_validation_training_distribution(y_train, y_valid)
     show_original_and_preprocessed_sample_image(image_paths)
-    apply_preprocessing(X_train, X_valid)
+
 
     model = nvidia_model()
     train_and_test_model(model, X_train, y_train, X_valid, y_valid)
@@ -45,10 +52,10 @@ def train_and_test_model(model, X_train, y_train, X_valid, y_valid):
 
     history = model.fit(
         batch_generator(X_train, y_train, 100, True),
-        steps_per_epoch=15,
+        steps_per_epoch=30,
         epochs=20,
         validation_data=batch_generator(X_valid, y_valid, 100, False),
-        validation_steps=4,
+        validation_steps=8,
         callbacks=[
             EarlyStopping(
                 monitor="val_loss", 
@@ -60,7 +67,7 @@ def train_and_test_model(model, X_train, y_train, X_valid, y_valid):
         verbose=1,
     )
 
-    model.save("nvidia_model_elu_dropout.h5")
+    model.save("model1_v1.h5")
 
     plt.plot(history.history["loss"])
     plt.plot(history.history["val_loss"])
@@ -74,22 +81,27 @@ def batch_generator(image_paths, steering_angles, batch_size, is_training):
         batch_img = []
         batch_steering = []
 
-        for i in range(batch_size):
-            random_index = random.randint(0, len(image_paths) - 1)
+        for _ in range(batch_size):
+            idx = random.randint(0, len(image_paths) - 1)
+            img_path = image_paths[idx]
+            steering = steering_angles[idx]
+
+            img = mpimg.imread(img_path)
+
+            if img is None:
+                continue 
+
+            img = img.astype("uint8")
 
             if is_training:
-                im, steering = random_augment(
-                    image_paths[random_index], steering_angles[random_index]
-                )
-            else:
-                im = mpimg.imread(image_paths[random_index])
-                steering = steering_angles[random_index]
+                img, steering = random_augment(img, steering)
 
-            im = img_preprocess_no_imread(im)
-            batch_img.append(im)
+            img = img_preprocess_no_imread(img)
+
+            batch_img.append(img)
             batch_steering.append(steering)
 
-        yield (np.asarray(batch_img), np.asarray(batch_steering))
+        yield np.asarray(batch_img), np.asarray(batch_steering)
 
 def nvidia_model():
     model = Sequential()
@@ -121,9 +133,8 @@ def apply_preprocessing(X_train, X_valid):
     X_valid = np.array(list(map(img_preprocess, X_valid)))
     return X_train, X_valid
 
-def random_augment(image_to_augment, steering_angle):
-    augment_image = mpimg.imread(image_to_augment)
-    augment_image = augment_image.astype("uint8")
+def random_augment(image, steering_angle):
+    augment_image = image.copy()
 
     if np.random.rand() < 0.5:
         augment_image = zoom(augment_image)
@@ -141,6 +152,7 @@ def random_augment(image_to_augment, steering_angle):
         augment_image, steering_angle = img_random_flip(augment_image, steering_angle)
 
     return augment_image, steering_angle
+
 
 def img_preprocess_no_imread(img):
     img = img[60:135, :, :]
@@ -238,17 +250,33 @@ def split_data(data):
     print(f"Training samples {len(X_train)}, Validation samples {len(X_valid)}")
     return X_train, X_valid, y_train, y_valid, image_paths
 
-def load_steering_img(datadir, data):
-    image_path = []
+def load_steering_img(datadir, data, correction=0.2):
+    image_paths = []
     steerings = []
+
     for i in range(len(data)):
-        indexed_data = data.iloc[i]
-        center, left, right = indexed_data[0], indexed_data[1], indexed_data[2]
-        image_path.append(os.path.join(datadir, center.strip()))
-        steerings.append(float(indexed_data[3]))
-    image_paths = np.asarray(image_path)
-    steerings = np.array(steerings)
-    return image_paths, steerings
+        row = data.iloc[i]
+
+        # Extract filenames (already path_leaf'd in load_data)
+        center = str(row.iloc[0]).strip()
+        left = str(row.iloc[1]).strip()
+        right = str(row.iloc[2]).strip()
+
+        steering = float(row.iloc[3])
+
+        # Center image
+        image_paths.append(os.path.join(datadir, center))
+        steerings.append(steering)
+
+        # Left image
+        image_paths.append(os.path.join(datadir, left))
+        steerings.append(steering + correction)
+
+        # Right image
+        image_paths.append(os.path.join(datadir, right))
+        steerings.append(steering - correction)
+
+    return np.asarray(image_paths), np.asarray(steerings, dtype=np.float32)
 
 def plot_balanced_data(balanced_data, centre):
     hist, _ = np.histogram(balanced_data["steering"], num_bins)
