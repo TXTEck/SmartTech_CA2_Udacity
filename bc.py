@@ -23,31 +23,39 @@ import albumentations as A
 num_bins = 25
 samples_per_bin = 300
 datadir = "C:\\Users\\USER\\Desktop\\SmartTechCA2_XuTeckTan\\DataForCar\\"
+datadir2 = "C:\\Users\\USER\\Desktop\\SmartTechCA2_XuTeckTan\\DataForCar2\\"
 
 def main():
-    data = load_data()
+    data_track1 = load_data(datadir)
+    bins1, _ = bin_and_plot_data(data_track1)
+    balanced_track1 = balance_data(data_track1, bins1)
+
+    data_track2 = load_data(datadir2)
+    bins2, _ = bin_and_plot_data(data_track2)
+    balanced_track2 = balance_data(data_track2, bins2)
+
+    data = pd.concat([balanced_track1, balanced_track2], ignore_index=True)
     print(f"Total driving samples: {len(data)}")
     bins, centre = bin_and_plot_data(data)
-    balanced_data = balance_data(data, bins)
-    mild_turns = (balanced_data["steering"].abs() > 0.05).sum()
-    medium_turns = (balanced_data["steering"].abs() > 0.15).sum()
-    sharp_turns = (balanced_data["steering"].abs() > 0.30).sum()
+    mild_turns = (data["steering"].abs() > 0.05).sum()
+    medium_turns = (data["steering"].abs() > 0.15).sum()
+    sharp_turns = (data["steering"].abs() > 0.30).sum()
 
     print("After balancing:")
     print(f"  Mild turns   (|steer| > 0.05): {mild_turns}")
     print(f"  Medium turns (|steer| > 0.15): {medium_turns}")
     print(f"  Sharp turns  (|steer| > 0.30): {sharp_turns}")
 
-    plot_balanced_data(balanced_data, centre)
-    X_train, X_valid, y_train, y_valid, image_paths = split_data(balanced_data)
+    plot_balanced_data(data, centre)
+    X_train, X_valid, y_train, y_valid, image_paths = split_data(data)
     plot_validation_training_distribution(y_train, y_valid)
     show_original_and_preprocessed_sample_image(image_paths)
 
 
     model = nvidia_model()
-    train_and_test_model(model, X_train, y_train, X_valid, y_valid)
+    train_and_test_model(model, X_train, y_train, X_valid, y_valid, "model2_v2.h5")
 
-def train_and_test_model(model, X_train, y_train, X_valid, y_valid):
+def train_and_test_model(model, X_train, y_train, X_valid, y_valid, model_version):
     print(model.summary())
 
     batch_size = 100
@@ -71,7 +79,7 @@ def train_and_test_model(model, X_train, y_train, X_valid, y_valid):
         verbose=1,
     )
 
-    model.save("model1_v3.h5")
+    model.save(model_version)
 
     plt.plot(history.history["loss"])
     plt.plot(history.history["val_loss"])
@@ -89,6 +97,9 @@ def batch_generator(image_paths, steering_angles, batch_size, is_training):
             idx = random.randint(0, len(image_paths) - 1)
             img_path = image_paths[idx]
             steering = steering_angles[idx]
+
+            if not os.path.exists(img_path):
+                continue
 
             img = mpimg.imread(img_path)
 
@@ -247,14 +258,14 @@ def plot_validation_training_distribution(y_train, y_valid):
     plt.show()
 
 def split_data(data):
-    image_paths, steerings = load_steering_img(datadir + "IMG", data)
+    image_paths, steerings = load_steering_img(data)
     X_train, X_valid, y_train, y_valid = train_test_split(
         image_paths, steerings, test_size=0.2, random_state=77
     )
     print(f"Training samples {len(X_train)}, Validation samples {len(X_valid)}")
     return X_train, X_valid, y_train, y_valid, image_paths
 
-def load_steering_img(datadir, data, correction=0.25):
+def load_steering_img(data, correction=0.25):
     image_paths = []
     steerings = []
 
@@ -268,16 +279,18 @@ def load_steering_img(datadir, data, correction=0.25):
 
         steering = float(row.iloc[3])
 
+        base_dir = row["datadir"]
+
         # Center image
-        image_paths.append(os.path.join(datadir, center))
+        image_paths.append(os.path.join(base_dir, "IMG", center))
         steerings.append(steering)
 
         # Left image
-        image_paths.append(os.path.join(datadir, left))
+        image_paths.append(os.path.join(base_dir, "IMG", left))
         steerings.append(steering + correction)
 
         # Right image
-        image_paths.append(os.path.join(datadir, right))
+        image_paths.append(os.path.join(base_dir, "IMG", right))
         steerings.append(steering - correction)
 
     return np.asarray(image_paths), np.asarray(steerings, dtype=np.float32)
@@ -315,14 +328,23 @@ def bin_and_plot_data(data):
     plt.show()
     return bins, centre
 
-def load_data():
+def load_data(datadir):
     columns = ["center", "left", "right", "steering", "throttle", "reverse", "speed"]
     data = pd.read_csv(os.path.join(datadir, "driving_log.csv"), names=columns)
     pd.set_option("display.width", None)
+    data["steering"] = pd.to_numeric(data["steering"], errors="coerce")
+    data = data.dropna(subset=["steering"])
     data["center"] = data["center"].apply(path_leaf)
     data["left"] = data["left"].apply(path_leaf)
     data["right"] = data["right"].apply(path_leaf)
+    data["datadir"] = datadir
     return data
+
+def combine_data(datadir1, datadir2):
+    return pd.concat(
+        [load_data(datadir1), load_data(datadir2)],
+        ignore_index=True,
+    )
 
 def path_leaf(path):
     head, tail = ntpath.split(path)
