@@ -5,7 +5,7 @@ import tensorflow.keras
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.layers import Dropout, Flatten
+from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.callbacks import EarlyStopping
 import pandas as pd
@@ -50,12 +50,16 @@ def main():
 def train_and_test_model(model, X_train, y_train, X_valid, y_valid):
     print(model.summary())
 
+    batch_size = 100
+    steps_per_epoch = max(1, len(X_train) // batch_size)
+    validation_steps = max(1, len(X_valid) // batch_size)
+
     history = model.fit(
-        batch_generator(X_train, y_train, 100, True),
-        steps_per_epoch=30,
+        batch_generator(X_train, y_train, batch_size, True),
+        steps_per_epoch=steps_per_epoch,
         epochs=20,
-        validation_data=batch_generator(X_valid, y_valid, 100, False),
-        validation_steps=8,
+        validation_data=batch_generator(X_valid, y_valid, batch_size, False),
+        validation_steps=validation_steps,
         callbacks=[
             EarlyStopping(
                 monitor="val_loss", 
@@ -67,7 +71,7 @@ def train_and_test_model(model, X_train, y_train, X_valid, y_valid):
         verbose=1,
     )
 
-    model.save("model1_v1.h5")
+    model.save("model1_v3.h5")
 
     plt.plot(history.history["loss"])
     plt.plot(history.history["val_loss"])
@@ -116,10 +120,8 @@ def nvidia_model():
     model.add(Flatten())
 
     model.add(Dense(100, activation="elu"))
-    model.add(Dropout(0.3))
 
     model.add(Dense(50, activation="elu"))
-    model.add(Dropout(0.3))
 
     model.add(Dense(10, activation="elu"))
     model.add(Dense(1))
@@ -140,7 +142,7 @@ def random_augment(image, steering_angle):
         augment_image = zoom(augment_image)
 
     if np.random.rand() < 0.5:
-        augment_image = pan(augment_image)
+        augment_image, steering_angle = pan(augment_image, steering_angle)
 
     if np.random.rand() < 0.5:
         augment_image = img_random_brightness(augment_image)
@@ -169,11 +171,13 @@ def zoom(image_to_zoom):
     return z_image["image"]
 
 
-def pan(image_to_pan):
-    pan_func = A.Affine(translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)})
+def pan(image_to_pan, steering_angle):
+    pan_x = np.random.uniform(-0.1, 0.1)
+    pan_y = np.random.uniform(-0.1, 0.1)
+    pan_func = A.Affine(translate_percent={"x": pan_x, "y": pan_y})
     pan_image = pan_func(image=image_to_pan)
-
-    return pan_image["image"]
+    steering_angle += pan_x * 0.4
+    return pan_image["image"], steering_angle
 
 
 def img_random_brightness(image_to_brighten):
@@ -250,7 +254,7 @@ def split_data(data):
     print(f"Training samples {len(X_train)}, Validation samples {len(X_valid)}")
     return X_train, X_valid, y_train, y_valid, image_paths
 
-def load_steering_img(datadir, data, correction=0.2):
+def load_steering_img(datadir, data, correction=0.25):
     image_paths = []
     steerings = []
 
