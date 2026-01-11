@@ -8,6 +8,7 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.layers import MaxPooling2D
 import pandas as pd
 import cv2
 import requests
@@ -24,6 +25,8 @@ num_bins = 25
 samples_per_bin = 300
 datadir = "C:\\Users\\USER\\Desktop\\SmartTechCA2_XuTeckTan\\DataForCar\\"
 datadir2 = "C:\\Users\\USER\\Desktop\\SmartTechCA2_XuTeckTan\\DataForCar2\\"
+track1_correction = 0.25
+track2_correction = 0.3
 
 def main():
     data_track1 = load_data(datadir)
@@ -34,18 +37,12 @@ def main():
     bins2, _ = bin_and_plot_data(data_track2)
     balanced_track2 = balance_data(data_track2, bins2)
 
+    sharp_turns_track2 = (balanced_track2["steering"].abs() > 0.30).sum()
+    print(f"Track 2 sharp turns after downsample: {sharp_turns_track2}")
+
     data = pd.concat([balanced_track1, balanced_track2], ignore_index=True)
     print(f"Total driving samples: {len(data)}")
     bins, centre = bin_and_plot_data(data)
-    mild_turns = (data["steering"].abs() > 0.05).sum()
-    medium_turns = (data["steering"].abs() > 0.15).sum()
-    sharp_turns = (data["steering"].abs() > 0.30).sum()
-
-    print("After balancing:")
-    print(f"  Mild turns   (|steer| > 0.05): {mild_turns}")
-    print(f"  Medium turns (|steer| > 0.15): {medium_turns}")
-    print(f"  Sharp turns  (|steer| > 0.30): {sharp_turns}")
-
     plot_balanced_data(data, centre)
     X_train, X_valid, y_train, y_valid, image_paths = split_data(data)
     plot_validation_training_distribution(y_train, y_valid)
@@ -53,7 +50,7 @@ def main():
 
 
     model = nvidia_model()
-    train_and_test_model(model, X_train, y_train, X_valid, y_valid, "model2_v2.h5")
+    train_and_test_model(model, X_train, y_train, X_valid, y_valid, "model3_v2.h5")
 
 def train_and_test_model(model, X_train, y_train, X_valid, y_valid, model_version):
     print(model.summary())
@@ -265,7 +262,7 @@ def split_data(data):
     print(f"Training samples {len(X_train)}, Validation samples {len(X_valid)}")
     return X_train, X_valid, y_train, y_valid, image_paths
 
-def load_steering_img(data, correction=0.25):
+def load_steering_img(data):
     image_paths = []
     steerings = []
 
@@ -280,6 +277,7 @@ def load_steering_img(data, correction=0.25):
         steering = float(row.iloc[3])
 
         base_dir = row["datadir"]
+        correction = track2_correction if base_dir == datadir2 else track1_correction
 
         # Center image
         image_paths.append(os.path.join(base_dir, "IMG", center))
@@ -319,6 +317,7 @@ def balance_data(data, bins):
     data.drop(data.index[remove_list], inplace=True)
     print("Remaining: ", len(data))
     return data
+
 
 def bin_and_plot_data(data):
     hist, bins = np.histogram(data["steering"], num_bins)
