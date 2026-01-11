@@ -50,7 +50,7 @@ def main():
 
 
     model = nvidia_model()
-    train_and_test_model(model, X_train, y_train, X_valid, y_valid, "model3_v2.h5")
+    train_and_test_model(model, X_train, y_train, X_valid, y_valid, "model2_v5.h5")
 
 def train_and_test_model(model, X_train, y_train, X_valid, y_valid, model_version):
     print(model.summary())

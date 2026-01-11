@@ -11,7 +11,7 @@ import cv2
 sio = socketio.Server(async_mode="eventlet")
 app = Flask(__name__)
 
-speed_limit = 30
+speed_limit = 25
 
 
 def img_preprocess(img):
@@ -61,7 +61,7 @@ def connect(sid, environ):
 
 
 if __name__ == "__main__":
-    model = load_model("model2_v4.h5", compile=False)
+    model = load_model("model2_v5.h5", compile=False)
 
     app = socketio.Middleware(sio, app)
     eventlet.wsgi.server(eventlet.listen(("", 4567)), app)
